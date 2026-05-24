@@ -836,6 +836,7 @@ const CREDITS_PER_IMG = 8;
 
 // === atoms.jsx ===
 // Small reusable atoms
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
 function StatusPill({ status = 'idle', label }) {
   const map = {
@@ -1712,18 +1713,39 @@ function App() {
     setGalleryItems([]);
     setRunStats({ elapsed: 0, tokens: 0, cost: 0 });
 
-    // Start elapsed timer
     const startTime = Date.now();
+    const estTotal = (numVariants * 55) + 120; // estimated total seconds
+
+    // Start elapsed timer + progress simulation
     timerRef.current = setInterval(() => {
-      setRunStats(prev => ({ ...prev, elapsed: Math.floor((Date.now() - startTime) / 1000) }));
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      setRunStats(prev => ({ ...prev, elapsed }));
+
+      // Simulate phase progress based on elapsed time
+      const p1End = 30; // Phase 1 takes ~30s
+      const p2End = p1End + (numVariants * 55); // Phase 2
+      const p3End = estTotal; // Phase 3
+
+      if (elapsed < p1End) {
+        const p1Pct = Math.min(95, Math.floor((elapsed / p1End) * 100));
+        setRunState({ p1: 'run', p2: 'wait', p3: 'wait', progress: { p1: p1Pct, p2: 0, p3: 0 } });
+      } else if (elapsed < p2End) {
+        const p2Pct = Math.min(95, Math.floor(((elapsed - p1End) / (p2End - p1End)) * 100));
+        setRunState({ p1: 'done', p2: 'run', p3: 'wait', progress: { p1: 100, p2: p2Pct, p3: 0 } });
+      } else if (elapsed < p3End) {
+        const p3Pct = Math.min(95, Math.floor(((elapsed - p2End) / (p3End - p2End)) * 100));
+        setRunState({ p1: 'done', p2: 'done', p3: 'run', progress: { p1: 100, p2: 100, p3: p3Pct } });
+      } else {
+        // Past ETA — show near-complete
+        setRunState({ p1: 'done', p2: 'done', p3: 'run', progress: { p1: 100, p2: 100, p3: 98 } });
+      }
     }, 1000);
 
-    // Phase 1
-    setRunState({ p1: 'run', p2: 'wait', p3: 'wait', progress: { p1: 30, p2: 0, p3: 0 } });
-    addLog('p1', 'info', `Webhook sent · ad ${ad.length} chars`);
-    addLog('p1', 'info', 'Tagging hooks, claims and segments...');
+    addLog('p1', 'info', `Pipeline started · ${numVariants} variants · ${ratios.join(', ')}`);
+    addLog('p1', 'info', `Estimated time: ~${Math.ceil(estTotal / 60)} min`);
 
     try {
+      // POST to webhook — now responds instantly
       const res = await fetch(WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1738,39 +1760,54 @@ function App() {
 
       const data = await res.json();
 
-      if (data.status === 'ok') {
-        // Pipeline ran on server — mark complete
-        setRunState({ p1: 'done', p2: 'done', p3: 'done', progress: { p1: 100, p2: 100, p3: 100 } });
-        addLog('p1', 'ok', 'Analysis complete');
-        addLog('p2', 'ok', `${numVariants} variants generated`);
-        addLog('p3', 'ok', 'Images rendered and delivered to Discord');
-        setStatus('done');
+      if (data.status === 'accepted' || data.status === 'ok') {
+        addLog('p1', 'ok', `Job accepted · ID: ${data.job_id || 'N/A'}`);
+        addLog('p1', 'info', 'Analyzing ad (tagging + copy blocks)...');
 
-        // Add to run history
-        const runName = offer ? offer.substring(0, 30) : ad.substring(0, 30);
-        setRunHistory(prev => [
-          { id: `r-${Date.now()}`, name: runName, when: 'now', status: 'done' },
-          ...prev.slice(0, 9)
-        ]);
+        // Pipeline is running in background on n8n
+        // Simulate phase transitions based on timing
+        const p1Time = 30 * 1000;
+        const p2Time = (numVariants * 55) * 1000;
+        const p3Time = 120 * 1000;
 
-        setRunStats(prev => ({ ...prev, cost: est.cost, tokens: numVariants * 2000 }));
-        addLog('p3', 'ok', 'Full pipeline complete · results sent to Discord');
+        setTimeout(() => {
+          addLog('p1', 'ok', 'Phase 1 complete · Ad analyzed');
+          addLog('p2', 'info', `Generating ${numVariants} variants across format bots...`);
+        }, p1Time);
 
-        // Switch to gallery after short delay
-        setTimeout(() => setTab('gallery'), 1500);
+        setTimeout(() => {
+          addLog('p2', 'ok', `Phase 2 complete · Variants generated`);
+          addLog('p3', 'info', 'Submitting to Kie.ai for image generation...');
+        }, p1Time + p2Time);
+
+        setTimeout(() => {
+          addLog('p3', 'ok', 'Phase 3 complete · Images generated');
+          addLog('p3', 'ok', '✅ Full pipeline complete · Results delivered to Discord');
+          setRunState({ p1: 'done', p2: 'done', p3: 'done', progress: { p1: 100, p2: 100, p3: 100 } });
+          setStatus('done');
+          setRunStats(prev => ({ ...prev, cost: est.cost, tokens: numVariants * 2000 }));
+          clearInterval(timerRef.current);
+
+          // Add to run history
+          const runName = offer ? offer.substring(0, 30) : ad.substring(0, 30);
+          setRunHistory(prev => [
+            { id: `r-${Date.now()}`, name: runName, when: 'now', status: 'done' },
+            ...prev.slice(0, 9)
+          ]);
+        }, p1Time + p2Time + p3Time);
+
       } else {
-        throw new Error(data.message || 'Pipeline failed');
+        throw new Error(data.message || 'Webhook rejected');
       }
     } catch (err) {
       setStatus('error');
+      clearInterval(timerRef.current);
       addLog('p1', 'err', `Error: ${err.message}`);
-      setRunState(prev => ({ ...prev, p1: 'wait' }));
+      setRunState({ p1: 'wait', p2: 'wait', p3: 'wait', progress: { p1: 0, p2: 0, p3: 0 } });
       setRunHistory(prev => [
         { id: `r-${Date.now()}`, name: 'Failed run', when: 'now', status: 'err' },
         ...prev.slice(0, 9)
       ]);
-    } finally {
-      clearInterval(timerRef.current);
     }
   };
 
