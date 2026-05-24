@@ -1024,7 +1024,7 @@ function BotPicker({ category, setCategory, selected, toggle, selectAll }) {
   );
 }
 
-function ConfigRail({ numVariants, setNumVariants, ratios, toggleRatio, category, setCategory, est, onSubmit, submitting }) {
+function ConfigRail({ numVariants, setNumVariants, ratios, toggleRatio, category, setCategory, est, onSubmit, submitting, canSubmit = false }) {
   const p = (numVariants - 1) / 19 * 100;
   return (
     <div className="rail">
@@ -1085,13 +1085,16 @@ function ConfigRail({ numVariants, setNumVariants, ratios, toggleRatio, category
         </div>
       </div>
 
-      <button className="submit" disabled={submitting} onClick={onSubmit}>
+      <button className="submit" disabled={submitting || !canSubmit} onClick={onSubmit}
+        style={!canSubmit && !submitting ? { opacity: 0.4, cursor: 'not-allowed' } : {}}>
         {submitting
           ? <>Processing…</>
-          : <>
-            <I.bolt size={15} /> Generate {est.images} ad unit{est.images === 1 ? '' : 's'}
-            <span className="kbd">⌘ ↵</span>
-          </>}
+          : !canSubmit
+            ? <>⚠ Paste winning ad copy first</>
+            : <>
+              <I.bolt size={15} /> Generate {est.images} ad unit{est.images === 1 ? '' : 's'}
+              <span className="kbd">⌘ ↵</span>
+            </>}
       </button>
     </div>
   );
@@ -1312,7 +1315,7 @@ function QueueView({ status, logs, runState, runStats = { elapsed: 0 }, numVaria
 
 // === gallery.jsx ===
 // GALLERY VIEW
-function GalleryView() {
+function GalleryView({ downloadCSV = () => { } }) {
   const [filter, setFilter] = useState({ cat: 'all', ratio: 'all' });
   const [view, setView] = useState('grid');
 
@@ -1933,6 +1936,7 @@ function App() {
                 est={est}
                 onSubmit={onSubmit}
                 submitting={status === 'active'}
+                canSubmit={ad.trim().length > 0}
               />
             )}
 
@@ -1940,7 +1944,7 @@ function App() {
               <QueueView status={status === 'active' ? (runState.p2 === 'run' ? 'p2' : 'p1') : 'idle'} logs={logs} runState={runState} runStats={runStats} numVariants={numVariants} estCost={est.cost} />
             )}
 
-            {tab === 'gallery' && <GalleryView />}
+            {tab === 'gallery' && <GalleryView downloadCSV={downloadCSV} />}
           </div>
         </main>
       </div>
