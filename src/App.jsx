@@ -1123,7 +1123,7 @@ function UploadView(props) {
 
 // === queue.jsx ===
 // QUEUE VIEW
-function QueueView({ status, logs, runState }) {
+function QueueView({ status, logs, runState, runStats = { elapsed: 0 }, numVariants = 3, estCost = 0 }) {
   // runState: { p1: 'done'|'run'|'wait', p2: 'done'|'run'|'wait', p3: ..., progress:{p1,p2,p3} }
   const phaseCard = (n, key, name, desc, side) => {
     const st = runState[key]; // done / run / wait
@@ -1269,7 +1269,7 @@ function QueueView({ status, logs, runState }) {
               </div>
               <div className="stat">
                 <div className="k">Est. cost</div>
-                <div className="v">{money(est.cost)}</div>
+                <div className="v">{money(estCost)}</div>
               </div>
             </div>
 
@@ -1938,7 +1938,7 @@ function App() {
             )}
 
             {tab === 'queue' && (
-              <QueueView status={status === 'active' ? (runState.p2 === 'run' ? 'p2' : 'p1') : 'idle'} logs={logs} runState={runState} />
+              <QueueView status={status === 'active' ? (runState.p2 === 'run' ? 'p2' : 'p1') : 'idle'} logs={logs} runState={runState} runStats={runStats} numVariants={numVariants} estCost={est.cost} />
             )}
 
             {tab === 'gallery' && <GalleryView />}
