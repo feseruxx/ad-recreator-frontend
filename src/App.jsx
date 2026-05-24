@@ -836,6 +836,7 @@ const CREDITS_PER_IMG = 8;
 
 // === atoms.jsx ===
 // Small reusable atoms
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
 function StatusPill({ status = 'idle', label }) {
   const map = {
