@@ -1772,14 +1772,12 @@ function App() {
 
       if (data.status === 'accepted' || data.status === 'ok') {
         addLog('p1', 'ok', `Job accepted · ID: ${data.job_id || 'N/A'}`);
-        addLog('p1', 'info', 'Analyzing ad (tagging + copy blocks)...');
 
-        // If pipeline returned results (synchronous mode), populate gallery
+        // If pipeline returned results (synchronous mode), populate gallery immediately
         if (data.results && data.results.length > 0) {
           const items = data.results
             .filter(r => r.imageUrl && r.state === 'success')
             .map((r, i) => {
-              // Map bot_name to bot slug for filtering
               const botMap = {
                 'Curiosity Bait': 'curiosity', 'Bold Typography': 'bold-type',
                 'Native News': 'native-news', 'Receipt': 'receipt',
@@ -1805,31 +1803,16 @@ function App() {
               };
             });
           setGalleryItems(items);
-          addLog('p3', 'ok', `${items.length} images ready in gallery`);
-        }
 
-        // Pipeline running in background — simulate phase transitions
-        const p1Time = 30 * 1000;
-        const p2Time = (numVariants * 55) * 1000;
-        const p3Time = 120 * 1000;
-
-        setTimeout(() => {
-          addLog('p1', 'ok', 'Phase 1 complete · Ad analyzed');
-          addLog('p2', 'info', `Generating ${numVariants} variants across format bots...`);
-        }, p1Time);
-
-        setTimeout(() => {
-          addLog('p2', 'ok', `Phase 2 complete · Variants generated`);
-          addLog('p3', 'info', 'Submitting to Kie.ai for image generation...');
-        }, p1Time + p2Time);
-
-        setTimeout(() => {
-          addLog('p3', 'ok', 'Phase 3 complete · Images generated');
-          addLog('p3', 'ok', '✅ Full pipeline complete · Results delivered to Discord');
+          // Pipeline complete — update everything immediately
           setRunState({ p1: 'done', p2: 'done', p3: 'done', progress: { p1: 100, p2: 100, p3: 100 } });
           setStatus('done');
           setRunStats(prev => ({ ...prev, cost: est.cost, tokens: numVariants * 2000 }));
           clearInterval(timerRef.current);
+          addLog('p1', 'ok', 'Phase 1 complete · Ad analyzed');
+          addLog('p2', 'ok', 'Phase 2 complete · Variants generated');
+          addLog('p3', 'ok', `Phase 3 complete · ${items.length} images generated`);
+          addLog('p3', 'ok', '✅ Full pipeline complete · Results in Gallery');
 
           const runName = offer ? offer.substring(0, 30) : ad.substring(0, 30);
           setRunHistory(prev => [
@@ -1837,11 +1820,40 @@ function App() {
             ...prev.slice(0, 9)
           ]);
 
-          // Auto-switch to gallery if we have results
-          if (galleryItems.length > 0) {
-            setTimeout(() => setTab('gallery'), 1500);
-          }
-        }, p1Time + p2Time + p3Time);
+          // Switch to gallery
+          setTimeout(() => setTab('gallery'), 1000);
+
+        } else {
+          // No results in response — async mode, simulate progress
+          addLog('p1', 'info', 'Analyzing ad (tagging + copy blocks)...');
+          const p1Time = 30 * 1000;
+          const p2Time = (numVariants * 55) * 1000;
+          const p3Time = 120 * 1000;
+
+          setTimeout(() => {
+            addLog('p1', 'ok', 'Phase 1 complete · Ad analyzed');
+            addLog('p2', 'info', `Generating ${numVariants} variants across format bots...`);
+          }, p1Time);
+
+          setTimeout(() => {
+            addLog('p2', 'ok', 'Phase 2 complete · Variants generated');
+            addLog('p3', 'info', 'Submitting to Kie.ai for image generation...');
+          }, p1Time + p2Time);
+
+          setTimeout(() => {
+            addLog('p3', 'ok', '✅ Full pipeline complete · Results delivered to Discord');
+            setRunState({ p1: 'done', p2: 'done', p3: 'done', progress: { p1: 100, p2: 100, p3: 100 } });
+            setStatus('done');
+            setRunStats(prev => ({ ...prev, cost: est.cost, tokens: numVariants * 2000 }));
+            clearInterval(timerRef.current);
+
+            const runName = offer ? offer.substring(0, 30) : ad.substring(0, 30);
+            setRunHistory(prev => [
+              { id: `r-${Date.now()}`, name: runName, when: 'now', status: 'done' },
+              ...prev.slice(0, 9)
+            ]);
+          }, p1Time + p2Time + p3Time);
+        }
 
       } else {
         throw new Error(data.message || 'Webhook rejected');
