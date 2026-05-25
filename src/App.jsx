@@ -1315,20 +1315,24 @@ function QueueView({ status, logs, runState, runStats = { elapsed: 0 }, numVaria
 
 // === gallery.jsx ===
 // GALLERY VIEW
-function GalleryView({ downloadCSV = () => { } }) {
+function GalleryView({ downloadCSV = () => { }, realResults = [] }) {
   const [filter, setFilter] = useState({ cat: 'all', ratio: 'all' });
   const [view, setView] = useState('grid');
 
+  // Use real results if available, otherwise show mock data
+  const hasRealData = realResults.length > 0;
+  const dataSource = hasRealData ? realResults : AD_UNITS;
+
   const filtered = useMemo(() => {
-    return AD_UNITS.filter(a => {
+    return dataSource.filter(a => {
       const bot = ALL_BOTS.find(b => b.id === a.bot);
       if (filter.cat !== 'all' && bot?.cat !== filter.cat) return false;
       if (filter.ratio !== 'all' && a.ratio !== filter.ratio) return false;
       return true;
     });
-  }, [filter]);
+  }, [filter, dataSource]);
 
-  const countBy = (key, val) => AD_UNITS.filter(a => {
+  const countBy = (key, val) => dataSource.filter(a => {
     if (key === 'cat') {
       const bot = ALL_BOTS.find(b => b.id === a.bot);
       return bot?.cat === val;
@@ -1340,9 +1344,9 @@ function GalleryView({ downloadCSV = () => { } }) {
     <div className="fade-in">
       <div className="gall-h">
         <div>
-          <h2>Generated ad units <b>{filtered.length}/{AD_UNITS.length}</b></h2>
+          <h2>Generated ad units <b>{filtered.length}/{dataSource.length}</b></h2>
           <div style={{ fontSize: 12, color: 'var(--t-low)', marginTop: 6, fontFamily: 'var(--mono)' }}>
-            run r-741 · Notion · AI Workspace · 9 variants · 3 aspect ratios · finished 1h ago
+            {hasRealData ? `Pipeline results · ${dataSource.length} ad units` : 'Showing demo data · run the pipeline to see real results'}
           </div>
         </div>
         <div className="gh-right">
@@ -1355,7 +1359,7 @@ function GalleryView({ downloadCSV = () => { } }) {
       <div className="filter-bar">
         <span className="tiny-mono" style={{ marginRight: 6, color: 'var(--t-dim)' }}>FILTER</span>
         <button className={`filter-chip ${filter.cat === 'all' ? 'on' : ''}`} onClick={() => setFilter(f => ({ ...f, cat: 'all' }))}>
-          All bots <span className="ct">{AD_UNITS.length}</span>
+          All bots <span className="ct">{dataSource.length}</span>
         </button>
         <button className={`filter-chip ${filter.cat === 'ai_image' ? 'on' : ''}`} onClick={() => setFilter(f => ({ ...f, cat: 'ai_image' }))}>
           <I.image size={11} /> AI Image <span className="ct">{countBy('cat', 'ai_image')}</span>
@@ -1387,7 +1391,11 @@ function GalleryView({ downloadCSV = () => { } }) {
               <div className={`ad-img ${ratioCls}`}>
                 <span className="ar-badge">{a.ratio}</span>
                 <button className="more"><I.dots size={14} /></button>
-                <MockSurface surface={a.surface} headline={a.headline} ratio={a.ratio} />
+                {a.imageUrl ? (
+                  <img src={a.imageUrl} alt={a.headline} style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', top: 0, left: 0, borderRadius: 'inherit' }} />
+                ) : (
+                  <MockSurface surface={a.surface} headline={a.headline} ratio={a.ratio} />
+                )}
               </div>
               <div className="ad-body">
                 <div className={`ad-bot ${bot.cat === 'ai_image' ? 'ai' : 'real'}`}>
@@ -1766,8 +1774,41 @@ function App() {
         addLog('p1', 'ok', `Job accepted · ID: ${data.job_id || 'N/A'}`);
         addLog('p1', 'info', 'Analyzing ad (tagging + copy blocks)...');
 
-        // Pipeline is running in background on n8n
-        // Simulate phase transitions based on timing
+        // If pipeline returned results (synchronous mode), populate gallery
+        if (data.results && data.results.length > 0) {
+          const items = data.results
+            .filter(r => r.imageUrl && r.state === 'success')
+            .map((r, i) => {
+              // Map bot_name to bot slug for filtering
+              const botMap = {
+                'Curiosity Bait': 'curiosity', 'Bold Typography': 'bold-type',
+                'Native News': 'native-news', 'Receipt': 'receipt',
+                'Problem-Solution': 'problem', 'Lo-Fi': 'lo-fi',
+                'Meme Style': 'meme', 'Scientific Study': 'science',
+                'Infographic': 'infographic', 'Post-It Note': 'post-it',
+                'Quiz/Interactive': 'quiz', 'Statistic': 'stat',
+                'Breaking News': 'breaking', 'Note From Founder': 'founder',
+                'Screenshot/Chat': 'screenshot', 'Hero Shot': 'hero',
+                'UGC': 'ugc', 'Holding Sign': 'holding',
+                'Happy Avatar': 'happy', 'Before & After': 'before-after'
+              };
+              return {
+                id: `real-${i}`,
+                bot: botMap[r.bot_name] || 'curiosity',
+                ratio: r.aspect_ratio || '9:16',
+                surface: 'real',
+                headline: r.headline || r.bot_name || '',
+                body: r.primary_text || '',
+                imageUrl: r.imageUrl,
+                score: 8.5,
+                copies: 0
+              };
+            });
+          setGalleryItems(items);
+          addLog('p3', 'ok', `${items.length} images ready in gallery`);
+        }
+
+        // Pipeline running in background — simulate phase transitions
         const p1Time = 30 * 1000;
         const p2Time = (numVariants * 55) * 1000;
         const p3Time = 120 * 1000;
@@ -1790,12 +1831,16 @@ function App() {
           setRunStats(prev => ({ ...prev, cost: est.cost, tokens: numVariants * 2000 }));
           clearInterval(timerRef.current);
 
-          // Add to run history
           const runName = offer ? offer.substring(0, 30) : ad.substring(0, 30);
           setRunHistory(prev => [
             { id: `r-${Date.now()}`, name: runName, when: 'now', status: 'done' },
             ...prev.slice(0, 9)
           ]);
+
+          // Auto-switch to gallery if we have results
+          if (galleryItems.length > 0) {
+            setTimeout(() => setTab('gallery'), 1500);
+          }
         }, p1Time + p2Time + p3Time);
 
       } else {
@@ -1815,8 +1860,9 @@ function App() {
 
   // Download batch as CSV
   const downloadCSV = () => {
+    const data = galleryItems.length > 0 ? galleryItems : AD_UNITS;
     const headers = 'variant,bot,headline,primary_text,image_url,aspect_ratio\n';
-    const rows = galleryItems.map(a =>
+    const rows = data.map(a =>
       `"${a.id}","${ALL_BOTS.find(b => b.id === a.bot)?.name || a.bot}","${(a.headline || '').replace(/"/g, '""')}","${(a.body || '').replace(/"/g, '""')}","${a.imageUrl || ''}","${a.ratio}"`
     ).join('\n');
     const blob = new Blob([headers + rows], { type: 'text/csv' });
@@ -1944,7 +1990,7 @@ function App() {
               <QueueView status={status === 'active' ? (runState.p2 === 'run' ? 'p2' : 'p1') : 'idle'} logs={logs} runState={runState} runStats={runStats} numVariants={numVariants} estCost={est.cost} />
             )}
 
-            {tab === 'gallery' && <GalleryView downloadCSV={downloadCSV} />}
+            {tab === 'gallery' && <GalleryView downloadCSV={downloadCSV} realResults={galleryItems} />}
           </div>
         </main>
       </div>
