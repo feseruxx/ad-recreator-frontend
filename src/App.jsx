@@ -1142,30 +1142,6 @@ function QueueView({ status, logs, runState, runStats = { elapsed: 0 }, numVaria
     );
   };
 
-  // Worker grid: 16 AI bots + 4 real bots, with mock statuses
-  const workerStates = useMemo(() => {
-    const map = {};
-    ALL_BOTS.forEach((b, i) => {
-      // first 7 done, next 5 running, rest queued
-      let s;
-      if (i < 7) s = 'done';
-      else if (i < 12) s = 'run';
-      else s = 'queue';
-      map[b.id] = s;
-    });
-    return map;
-  }, []);
-
-  const counts = useMemo(() => {
-    let done = 0, run = 0, q = 0;
-    Object.values(workerStates).forEach(v => {
-      if (v === 'done') done++;
-      else if (v === 'run') run++;
-      else q++;
-    });
-    return { done, run, q };
-  }, [workerStates]);
-
   return (
     <div className="queue-grid">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18, minWidth: 0 }}>
@@ -1173,59 +1149,30 @@ function QueueView({ status, logs, runState, runStats = { elapsed: 0 }, numVaria
         <div className="pipeline-vis fade-in">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
             <I.activity size={15} />
-            <div style={{ fontWeight: 500, fontSize: 13.5, color: 'var(--t-hi)' }}>Pipeline · run r-742</div>
-            <span className="tiny-mono">started 00:47s ago · n8n · prod</span>
+            <div style={{ fontWeight: 500, fontSize: 13.5, color: 'var(--t-hi)' }}>Pipeline</div>
+            <span className="tiny-mono">{runStats.elapsed > 0 ? `${runStats.elapsed}s elapsed` : 'waiting'}</span>
             <div style={{ marginLeft: 'auto' }}><StatusPill status={status} /></div>
           </div>
 
-          {phaseCard('01', 'p1', 'Analysis · winning-ad.txt',
-            'Hooks, claims and segments tagged. Genesis schema validated.',
-            <><b>4.1s</b><span>1,840 tok</span><span>$0.002</span></>
+          {phaseCard('01', 'p1', 'Analysis',
+            runState.p1 === 'done' ? 'Ad tagged and copy blocks extracted.' : 'Analyzing winning ad...',
+            <><b>{runState.p1 === 'done' ? '✓' : '...'}</b></>
           )}
-          {phaseCard('02', 'p2', 'Variants · 16 bots in parallel',
-            `${counts.done} complete · ${counts.run} in-flight · ${counts.q} queued. Brand voice score 8.6.`,
-            <><b>{counts.done}/{ALL_BOTS.length}</b><span>14.7s elapsed</span><span>~28k tok</span></>
+          {phaseCard('02', 'p2', 'Variants',
+            runState.p2 === 'done' ? `${numVariants} variants generated.` : runState.p2 === 'run' ? 'Generating variants...' : 'Waiting...',
+            <><b>{runState.p2 === 'done' ? '✓' : '...'}</b><span>{numVariants} bots</span></>
           )}
-          {phaseCard('03', 'p3', 'Imagery · Nano Banana 2',
-            'Render queued. Three aspect ratios per variant — 9:16 first.',
-            <><b>1/27</b><span>queued</span><span>est $1.08</span></>
+          {phaseCard('03', 'p3', 'Images · Nano Banana 2',
+            runState.p3 === 'done' ? 'Images rendered and delivered.' : runState.p3 === 'run' ? 'Generating images...' : 'Waiting...',
+            <><b>{runState.p3 === 'done' ? '✓' : '...'}</b><span>est {money(estCost)}</span></>
           )}
-        </div>
-
-        <div className="card workers-card fade-in">
-          <div className="workers-h">
-            <I.cube size={15} />
-            <span className="title">Workers</span>
-            <span className="sub">phase 02</span>
-            <div className="right">
-              <span><b style={{ color: '#7eebc8' }}>{counts.done}</b> done</span>
-              <span><b style={{ color: '#bcd1ff' }}>{counts.run}</b> running</span>
-              <span><b>{counts.q}</b> queued</span>
-            </div>
-          </div>
-          <div className="worker-grid">
-            {ALL_BOTS.map(b => {
-              const s = workerStates[b.id];
-              const labelMap = { done: '1.7s', run: '…', queue: 'queued', err: 'err' };
-              return (
-                <div key={b.id} className={`worker ${s}`}>
-                  <span className="led" />
-                  <span className="nm">{b.name}</span>
-                  <span className="st">{labelMap[s]}</span>
-                </div>
-              );
-            })}
-          </div>
         </div>
 
         <div className="card fade-in">
           <div className="card-h">
             <I.text size={15} />
             <span className="title">Live log</span>
-            <span className="sub">tail -f · pipeline</span>
-            <div className="right">
-              <button className="copy-btn">Copy log</button>
-            </div>
+            <span className="sub">pipeline</span>
           </div>
           <div className="logs">
             {logs.length === 0 && (
@@ -1274,36 +1221,6 @@ function QueueView({ status, logs, runState, runStats = { elapsed: 0 }, numVaria
                 <div className="v">{money(estCost)}</div>
               </div>
             </div>
-
-            <h4 style={{ marginTop: 18 }}>Timeline</h4>
-            <div className="timeline">
-              <div className="tl done"><span className="ld" /><span className="lbl">Payload received</span><span className="dr">00:00</span></div>
-              <div className="tl done"><span className="ld" /><span className="lbl">Genesis tagging</span><span className="dr">00:04</span></div>
-              <div className="tl done"><span className="ld" /><span className="lbl">Schema validated</span><span className="dr">00:05</span></div>
-              <div className="tl run"><span className="ld" /><span className="lbl">Bot fan-out · 16 parallel</span><span className="dr">00:14</span></div>
-              <div className="tl"><span className="ld" /><span className="lbl">Image render queue</span><span className="dr">est 0:38</span></div>
-              <div className="tl"><span className="ld" /><span className="lbl">Package & deliver</span><span className="dr">est 1:25</span></div>
-            </div>
-          </div>
-        </div>
-
-        <div className="card fade-in">
-          <div className="card-h">
-            <I.coins size={15} />
-            <span className="title">Budget</span>
-            <span className="sub">today</span>
-          </div>
-          <div className="run-meta" style={{ paddingTop: 8 }}>
-            <div className="receipt">
-              <div className="l"><span>Runs today</span><span className="v">7</span></div>
-              <div className="l"><span>Images rendered</span><span className="v">182</span></div>
-              <div className="l"><span>Credits used</span><span className="v">1,456</span></div>
-              <hr />
-              <div className="l total"><span>Spent today</span><span className="v">~$7.28</span></div>
-            </div>
-            <div style={{ marginTop: 10, fontSize: 12, color: 'var(--t-low)', lineHeight: 1.5 }}>
-              Soft cap at <b style={{ color: 'var(--t-hi)' }}>$25/day</b>. Resets 00:00 UTC.
-            </div>
           </div>
         </div>
       </div>
@@ -1350,8 +1267,6 @@ function GalleryView({ downloadCSV = () => { }, realResults = [] }) {
           </div>
         </div>
         <div className="gh-right">
-          <Btn><I.refresh size={13} /> Re-run failed</Btn>
-          <Btn><I.share size={13} /> Share</Btn>
           <Btn variant="primary" onClick={downloadCSV}><I.download size={13} /> Download batch <span style={{ opacity: 0.7, fontFamily: 'var(--mono)', fontSize: 10 }}>CSV</span></Btn>
         </div>
       </div>
@@ -1390,7 +1305,6 @@ function GalleryView({ downloadCSV = () => { }, realResults = [] }) {
             <div key={a.id} className="adcard">
               <div className={`ad-img ${ratioCls}`}>
                 <span className="ar-badge">{a.ratio}</span>
-                <button className="more"><I.dots size={14} /></button>
                 {a.imageUrl ? (
                   <img src={a.imageUrl} alt={a.headline} style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', top: 0, left: 0, borderRadius: 'inherit' }} />
                 ) : (
@@ -1417,16 +1331,9 @@ function GalleryView({ downloadCSV = () => { }, realResults = [] }) {
                 </div>
               </div>
               <div className="ad-foot">
-                <span className="score"><I.star size={11} /> {a.score.toFixed(1)}</span>
+                <span style={{ fontSize: 11, color: 'var(--t-low)', fontFamily: 'var(--mono)' }}>{a.ratio}</span>
                 <span className="dot-sep" />
-                <span>{a.copies} copies</span>
-                <span className="dot-sep" />
-                <span>14d expiry</span>
-                <span className="actions">
-                  <button title="Save"><I.heart size={13} /></button>
-                  <button title="Download"><I.download size={13} /></button>
-                  <button title="Re-render"><I.refresh size={13} /></button>
-                </span>
+                <span style={{ fontSize: 11, color: 'var(--t-dim)' }}>14d expiry</span>
               </div>
             </div>
           );
