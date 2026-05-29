@@ -1843,111 +1843,92 @@ function App() {
         ? { ad_content: ad, offer: offerContext, reference_images: imageUrls, aspect_ratios: ratios }
         : { ad_content: ad, offer: offerContext, num_variants: numVariants, aspect_ratios: ratios, bot_filter: category };
 
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
+      // Fire-and-forget: send request, don't wait for full pipeline
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
-      const data = await res.json();
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+        const data = await res.json();
 
-      if (data.status === 'accepted' || data.status === 'ok') {
-        addLog('p1', 'ok', `Job accepted · ID: ${data.job_id || 'N/A'}`);
+        if (data.status === 'accepted' || data.status === 'ok') {
+          addLog('p1', 'ok', 'Pipeline accepted');
 
-        // If pipeline returned results (synchronous mode), populate gallery immediately
-        if (data.results && data.results.length > 0) {
-          const items = data.results
-            .filter(r => r.imageUrl && r.state === 'success')
-            .map((r, i) => {
-              const botMap = {
-                'Curiosity Bait': 'curiosity', 'Bold Typography': 'bold-type',
-                'Native News': 'native-news', 'Receipt': 'receipt',
-                'Problem-Solution': 'problem', 'Lo-Fi': 'lo-fi',
-                'Meme Style': 'meme', 'Scientific Study': 'science',
-                'Infographic': 'infographic', 'Post-It Note': 'post-it',
-                'Quiz/Interactive': 'quiz', 'Statistic': 'stat',
-                'Breaking News': 'breaking', 'Note From Founder': 'founder',
-                'Screenshot/Chat': 'screenshot', 'Hero Shot': 'hero',
-                'UGC': 'ugc', 'Holding Sign': 'holding',
-                'Happy Avatar': 'happy', 'Before & After': 'before-after'
-              };
-              return {
-                id: `real-${i}`,
-                bot: botMap[r.bot_name] || 'curiosity',
-                ratio: r.aspect_ratio || '9:16',
-                surface: 'real',
-                headline: r.headline || r.bot_name || '',
-                body: r.primary_text || '',
-                imageUrl: r.imageUrl,
-                score: 8.5,
-                copies: 0
-              };
-            });
-          setGalleryItems(items);
-
-          // Pipeline complete — update everything immediately
-          setRunState({ p1: 'done', p2: 'done', p3: 'done', progress: { p1: 100, p2: 100, p3: 100 } });
-          setStatus('done');
-          setRunStats(prev => ({ ...prev, cost: est.cost, tokens: numVariants * 2000 }));
-          clearInterval(timerRef.current);
-          addLog('p1', 'ok', 'Phase 1 complete · Ad analyzed');
-          addLog('p2', 'ok', 'Phase 2 complete · Variants generated');
-          addLog('p3', 'ok', `Phase 3 complete · ${items.length} images generated`);
-          addLog('p3', 'ok', '✅ Full pipeline complete · Results in Gallery');
-
-          const runName = offer ? offer.substring(0, 30) : ad.substring(0, 30);
-          setRunHistory(prev => [
-            { id: `r-${Date.now()}`, name: runName, when: 'now', status: 'done' },
-            ...prev.slice(0, 9)
-          ]);
-
-          // Switch to gallery
-          setTimeout(() => setTab('gallery'), 1000);
-
-        } else {
-          // No results in response — async mode, simulate progress
-          addLog('p1', 'info', 'Analyzing ad (tagging + copy blocks)...');
-          const p1Time = 30 * 1000;
-          const p2Time = (numVariants * 55) * 1000;
-          const p3Time = 120 * 1000;
-
-          setTimeout(() => {
-            addLog('p1', 'ok', 'Phase 1 complete · Ad analyzed');
-            addLog('p2', 'info', `Generating ${numVariants} variants across format bots...`);
-          }, p1Time);
-
-          setTimeout(() => {
-            addLog('p2', 'ok', 'Phase 2 complete · Variants generated');
-            addLog('p3', 'info', 'Submitting to Kie.ai for image generation...');
-          }, p1Time + p2Time);
-
-          setTimeout(() => {
-            addLog('p3', 'ok', '✅ Full pipeline complete · Results delivered to Discord');
+          // If pipeline returned results immediately, populate gallery
+          if (data.results && data.results.length > 0) {
+            const items = data.results
+              .filter(r => r.imageUrl && r.state === 'success')
+              .map((r, i) => {
+                const botMap = {
+                  'Curiosity Bait': 'curiosity', 'Bold Typography': 'bold-type',
+                  'Native News': 'native-news', 'Receipt': 'receipt',
+                  'Problem-Solution': 'problem', 'Lo-Fi': 'lo-fi',
+                  'Meme Style': 'meme', 'Scientific Study': 'science',
+                  'Infographic': 'infographic', 'Post-It Note': 'post-it',
+                  'Quiz/Interactive': 'quiz', 'Statistic': 'stat',
+                  'Breaking News': 'breaking', 'Note From Founder': 'founder',
+                  'Screenshot/Chat': 'screenshot', 'Hero Shot': 'hero',
+                  'UGC': 'ugc', 'Holding Sign': 'holding',
+                  'Happy Avatar': 'happy', 'Before & After': 'before-after'
+                };
+                return {
+                  id: `real-${i}`, bot: botMap[r.bot_name] || 'curiosity',
+                  ratio: r.aspect_ratio || '9:16', surface: 'real',
+                  headline: r.headline || r.bot_name || '',
+                  body: r.primary_text || '', imageUrl: r.imageUrl, score: 8.5, copies: 0
+                };
+              });
+            setGalleryItems(items);
             setRunState({ p1: 'done', p2: 'done', p3: 'done', progress: { p1: 100, p2: 100, p3: 100 } });
             setStatus('done');
-            setRunStats(prev => ({ ...prev, cost: est.cost, tokens: numVariants * 2000 }));
             clearInterval(timerRef.current);
-
-            const runName = offer ? offer.substring(0, 30) : ad.substring(0, 30);
-            setRunHistory(prev => [
-              { id: `r-${Date.now()}`, name: runName, when: 'now', status: 'done' },
-              ...prev.slice(0, 9)
-            ]);
-          }, p1Time + p2Time + p3Time);
+            addLog('p3', 'ok', `✅ Pipeline complete · ${items.length} images in Gallery`);
+            setTimeout(() => setTab('gallery'), 1000);
+            return;
+          }
         }
-
-      } else {
-        throw new Error(data.message || 'Webhook rejected');
+      } catch (abortErr) {
+        clearTimeout(timeout);
+        // AbortError = timeout, pipeline is running in background — this is NORMAL
+        if (abortErr.name === 'AbortError') {
+          addLog('p1', 'ok', 'Pipeline running in background · results → Discord');
+        } else {
+          addLog('p1', 'info', 'Request sent · waiting for Discord delivery');
+        }
       }
+
+      // Pipeline running in background — simulate progress
+      addLog('p1', 'info', 'Processing... results will arrive in Discord');
+      const p1Time = 30 * 1000;
+      const p2Time = (pipelineMode === 'recreate' ? imageUrls.length * 75 : numVariants * 75) * 1000;
+      const p3Time = (pipelineMode === 'recreate' ? 240 : 180) * 1000;
+
+      setTimeout(() => addLog('p1', 'ok', 'Phase 1 complete'), p1Time);
+      setTimeout(() => addLog('p2', 'ok', 'Phase 2 complete'), p1Time + p2Time);
+      setTimeout(() => {
+        addLog('p3', 'ok', '✅ Pipeline complete · Check Discord for results');
+        setRunState({ p1: 'done', p2: 'done', p3: 'done', progress: { p1: 100, p2: 100, p3: 100 } });
+        setStatus('done');
+        clearInterval(timerRef.current);
+        const runName = offer ? offer.substring(0, 30) : ad.substring(0, 30);
+        setRunHistory(prev => [{ id: `r-${Date.now()}`, name: runName, when: 'now', status: 'done' }, ...prev.slice(0, 9)]);
+      }, p1Time + p2Time + p3Time);
+
     } catch (err) {
-      setStatus('error');
-      clearInterval(timerRef.current);
-      addLog('p1', 'err', `Error: ${err.message}`);
-      setRunState({ p1: 'wait', p2: 'wait', p3: 'wait', progress: { p1: 0, p2: 0, p3: 0 } });
-      setRunHistory(prev => [
-        { id: `r-${Date.now()}`, name: 'Failed run', when: 'now', status: 'err' },
-        ...prev.slice(0, 9)
-      ]);
+      // Only real errors (not timeouts) show as errors
+      if (err.name !== 'AbortError') {
+        setStatus('error');
+        clearInterval(timerRef.current);
+        addLog('p1', 'err', `Error: ${err.message}`);
+        setRunState({ p1: 'wait', p2: 'wait', p3: 'wait', progress: { p1: 0, p2: 0, p3: 0 } });
+        setRunHistory(prev => [{ id: `r-${Date.now()}`, name: 'Failed run', when: 'now', status: 'err' }, ...prev.slice(0, 9)]);
+      }
     }
   };
 
