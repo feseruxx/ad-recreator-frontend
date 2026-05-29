@@ -1101,25 +1101,39 @@ function ConfigRail({ numVariants, setNumVariants, ratios, toggleRatio, category
 }
 
 function UploadView(props) {
-  const { pipelineMode = 'generate', setPipelineMode, referenceImages = '', setReferenceImages } = props;
+  const { pipelineMode = 'generate', setPipelineMode, referenceImages = '', setReferenceImages, selectedOffer, setTab } = props;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Mode Toggle */}
-      <div style={{ display: 'flex', gap: 8, padding: '2px', background: 'var(--panel)', borderRadius: 10, border: '1px solid var(--line)', width: 'fit-content' }}>
-        <button onClick={() => setPipelineMode?.('generate')} style={{
-          padding: '8px 20px', borderRadius: 8, border: 'none', cursor: 'pointer',
-          fontSize: 13, fontWeight: 600, fontFamily: 'var(--sans)',
-          background: pipelineMode === 'generate' ? 'var(--blue)' : 'transparent',
-          color: pipelineMode === 'generate' ? '#fff' : 'var(--t-low)',
-          transition: 'all 0.2s'
-        }}>⚡ Generate Variants</button>
-        <button onClick={() => setPipelineMode?.('recreate')} style={{
-          padding: '8px 20px', borderRadius: 8, border: 'none', cursor: 'pointer',
-          fontSize: 13, fontWeight: 600, fontFamily: 'var(--sans)',
-          background: pipelineMode === 'recreate' ? 'var(--green, #38a169)' : 'transparent',
-          color: pipelineMode === 'recreate' ? '#fff' : 'var(--t-low)',
-          transition: 'all 0.2s'
-        }}>🔄 Recreate Images</button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, padding: '2px', background: 'var(--panel)', borderRadius: 10, border: '1px solid var(--line)' }}>
+          <button onClick={() => setPipelineMode?.('generate')} style={{
+            padding: '8px 20px', borderRadius: 8, border: 'none', cursor: 'pointer',
+            fontSize: 13, fontWeight: 600, fontFamily: 'var(--sans)',
+            background: pipelineMode === 'generate' ? 'var(--blue)' : 'transparent',
+            color: pipelineMode === 'generate' ? '#fff' : 'var(--t-low)',
+            transition: 'all 0.2s'
+          }}>⚡ Generate Variants</button>
+          <button onClick={() => setPipelineMode?.('recreate')} style={{
+            padding: '8px 20px', borderRadius: 8, border: 'none', cursor: 'pointer',
+            fontSize: 13, fontWeight: 600, fontFamily: 'var(--sans)',
+            background: pipelineMode === 'recreate' ? 'var(--green, #38a169)' : 'transparent',
+            color: pipelineMode === 'recreate' ? '#fff' : 'var(--t-low)',
+            transition: 'all 0.2s'
+          }}>🔄 Recreate Images</button>
+        </div>
+
+        {/* Selected Offer Badge */}
+        {selectedOffer ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 14px', background: 'var(--blue)', borderRadius: 8, border: '1px solid var(--blue)' }}>
+            <span style={{ fontSize: 12, color: '#fff', fontWeight: 600 }}>📦 {selectedOffer.name}</span>
+            <button onClick={() => setTab?.('offers')} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', fontSize: 10, cursor: 'pointer' }}>change</button>
+          </div>
+        ) : (
+          <button onClick={() => setTab?.('offers')} style={{ padding: '6px 14px', background: 'var(--panel-2)', border: '1px solid var(--line)', borderRadius: 8, color: 'var(--t-low)', fontSize: 12, cursor: 'pointer' }}>
+            📦 Select Offer (optional)
+          </button>
+        )}
       </div>
 
       <PipelineStrip numVariants={props.numVariants} ratios={props.ratios} />
@@ -1610,6 +1624,108 @@ const SURFACES = {
 
 
 
+// === OFFER VAULT VIEW ===
+function OffersView({ offers, saveOffers, selectedOfferId, setSelectedOfferId }) {
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState({ name: '', description: '', persona: '', research: '', hooks: '', constraints: '' });
+
+  const startNew = () => {
+    setForm({ name: '', description: '', persona: '', research: '', hooks: '', constraints: '' });
+    setEditing('new');
+  };
+
+  const startEdit = (offer) => {
+    setForm({ ...offer });
+    setEditing(offer.id);
+  };
+
+  const save = () => {
+    if (!form.name.trim()) return;
+    if (editing === 'new') {
+      saveOffers([...offers, { ...form, id: 'offer-' + Date.now() }]);
+    } else {
+      saveOffers(offers.map(o => o.id === editing ? { ...form, id: editing } : o));
+    }
+    setEditing(null);
+  };
+
+  const remove = (id) => {
+    saveOffers(offers.filter(o => o.id !== id));
+    if (selectedOfferId === id) setSelectedOfferId(null);
+  };
+
+  const fieldStyle = { width: '100%', padding: 12, background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 8, color: 'var(--t-hi)', fontSize: 13, fontFamily: 'var(--sans)', resize: 'vertical' };
+  const labelStyle = { fontSize: 11, color: 'var(--t-low)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6, display: 'block' };
+
+  if (editing) {
+    return (
+      <div className="fade-in" style={{ maxWidth: 700 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--t-max)' }}>{editing === 'new' ? 'New Offer' : 'Edit Offer'}</h2>
+          <button onClick={() => setEditing(null)} style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', borderRadius: 8, padding: '6px 14px', color: 'var(--t-mid)', fontSize: 12, cursor: 'pointer' }}>Cancel</button>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div><label style={labelStyle}>Offer Name</label><input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. SHEIN Mystery Box, FreeCash CPI" style={{ ...fieldStyle, fontWeight: 600 }} /></div>
+          <div><label style={labelStyle}>Product / Offer Description</label><textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="What is being sold, to whom, and why now. Include core promise, pricing, and mechanism." rows={3} style={fieldStyle} /></div>
+          <div><label style={labelStyle}>Target Persona</label><textarea value={form.persona} onChange={e => setForm({ ...form, persona: e.target.value })} placeholder="Demographics, psychographics, core wound, daily habits, what they fear, what they want..." rows={4} style={fieldStyle} /></div>
+          <div><label style={labelStyle}>Market Research</label><textarea value={form.research} onChange={e => setForm({ ...form, research: e.target.value })} placeholder="Competitive landscape, market trends, what angles are working, seasonal factors..." rows={3} style={fieldStyle} /></div>
+          <div><label style={labelStyle}>Winning Hooks & Angles</label><textarea value={form.hooks} onChange={e => setForm({ ...form, hooks: e.target.value })} placeholder="Proven hooks that convert, angles that work, specific phrases, emotional triggers..." rows={4} style={fieldStyle} /></div>
+          <div><label style={labelStyle}>Constraints (Do's & Don'ts)</label><textarea value={form.constraints} onChange={e => setForm({ ...form, constraints: e.target.value })} placeholder="What to say, what NOT to say, compliance rules, brand voice notes, price claim limits..." rows={4} style={fieldStyle} /></div>
+          <button onClick={save} style={{ padding: '12px 24px', background: 'var(--blue)', border: 'none', borderRadius: 8, color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', width: 'fit-content' }}>💾 Save Offer</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fade-in">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <div>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--t-max)' }}>Offer Vault</h2>
+          <p style={{ fontSize: 13, color: 'var(--t-low)', marginTop: 4 }}>Save complete offer profiles. Select one before running to give the bots full context.</p>
+        </div>
+        <button onClick={startNew} style={{ padding: '8px 18px', background: 'var(--blue)', border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>+ New Offer</button>
+      </div>
+
+      {offers.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: 60, color: 'var(--t-dim)' }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>📦</div>
+          <p style={{ fontSize: 14 }}>No offers saved yet. Create your first offer profile.</p>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {offers.map(o => (
+            <div key={o.id} style={{
+              padding: 16, background: selectedOfferId === o.id ? 'var(--panel-3)' : 'var(--panel)',
+              border: `1px solid ${selectedOfferId === o.id ? 'var(--blue)' : 'var(--line)'}`,
+              borderRadius: 10, cursor: 'pointer', transition: 'all 0.2s'
+            }} onClick={() => setSelectedOfferId(selectedOfferId === o.id ? null : o.id)}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {selectedOfferId === o.id && <span style={{ color: 'var(--blue)', fontSize: 14 }}>✓</span>}
+                  <b style={{ color: 'var(--t-hi)', fontSize: 14 }}>{o.name}</b>
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={(e) => { e.stopPropagation(); startEdit(o); }} style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', borderRadius: 6, padding: '4px 10px', color: 'var(--t-mid)', fontSize: 11, cursor: 'pointer' }}>Edit</button>
+                  <button onClick={(e) => { e.stopPropagation(); remove(o.id); }} style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', borderRadius: 6, padding: '4px 10px', color: '#e53e3e', fontSize: 11, cursor: 'pointer' }}>Delete</button>
+                </div>
+              </div>
+              {o.description && <p style={{ fontSize: 12, color: 'var(--t-low)', marginTop: 8, lineHeight: 1.5 }}>{o.description.substring(0, 150)}{o.description.length > 150 ? '...' : ''}</p>}
+              <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                {o.persona && <span style={{ fontSize: 10, padding: '2px 8px', background: 'var(--panel-2)', borderRadius: 4, color: 'var(--t-dim)' }}>👤 Persona</span>}
+                {o.hooks && <span style={{ fontSize: 10, padding: '2px 8px', background: 'var(--panel-2)', borderRadius: 4, color: 'var(--t-dim)' }}>🎣 Hooks</span>}
+                {o.constraints && <span style={{ fontSize: 10, padding: '2px 8px', background: 'var(--panel-2)', borderRadius: 4, color: 'var(--t-dim)' }}>⚠️ Constraints</span>}
+                {o.research && <span style={{ fontSize: 10, padding: '2px 8px', background: 'var(--panel-2)', borderRadius: 4, color: 'var(--t-dim)' }}>📊 Research</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // === app.jsx ===
 // MAIN APP
 function App() {
@@ -1629,6 +1745,14 @@ function App() {
   const [selectedBots, setSelectedBots] = useState(AI_BOTS.map(b => b.id));
   const [pipelineMode, setPipelineMode] = useState('generate'); // 'generate' or 'recreate'
   const [referenceImages, setReferenceImages] = useState('');
+
+  // Offer Vault
+  const [offers, setOffers] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('adrecreator_offers') || '[]'); } catch (e) { return []; }
+  });
+  const [selectedOfferId, setSelectedOfferId] = useState(null);
+  const selectedOffer = offers.find(o => o.id === selectedOfferId) || null;
+  const saveOffers = (updated) => { setOffers(updated); localStorage.setItem('adrecreator_offers', JSON.stringify(updated)); };
 
   // Real pipeline state
   const [logs, setLogs] = useState([]);
@@ -1710,10 +1834,14 @@ function App() {
     addLog('p1', 'info', `Estimated time: ~${Math.ceil(estTotal / 60)} min`);
 
     try {
+      const offerContext = selectedOffer
+        ? `${selectedOffer.description || ''}\n\n=== TARGET PERSONA ===\n${selectedOffer.persona || ''}\n\n=== WINNING HOOKS & ANGLES ===\n${selectedOffer.hooks || ''}\n\n=== CONSTRAINTS ===\n${selectedOffer.constraints || ''}\n\n=== MARKET RESEARCH ===\n${selectedOffer.research || ''}`
+        : offer;
+
       const url = pipelineMode === 'recreate' ? RECREATE_URL : WEBHOOK_URL;
       const body = pipelineMode === 'recreate'
-        ? { ad_content: ad, offer: offer, reference_images: imageUrls, aspect_ratios: ratios }
-        : { ad_content: ad, offer: offer, num_variants: numVariants, aspect_ratios: ratios, bot_filter: category };
+        ? { ad_content: ad, offer: offerContext, reference_images: imageUrls, aspect_ratios: ratios }
+        : { ad_content: ad, offer: offerContext, num_variants: numVariants, aspect_ratios: ratios, bot_filter: category };
 
       const res = await fetch(url, {
         method: 'POST',
@@ -1842,14 +1970,17 @@ function App() {
     { id: 'upload', ico: <I.upload size={14} />, label: 'Upload', meta: '⌘ 1' },
     { id: 'queue', ico: <I.queue size={14} />, label: 'Queue', meta: '⌘ 2' },
     { id: 'gallery', ico: <I.gallery size={14} />, label: 'Gallery', meta: '⌘ 3' },
+    { id: 'offers', ico: <I.book size={14} />, label: 'Offer Vault', meta: '⌘ 4' },
   ];
 
-  const tabTitle = tab === 'upload' ? 'New run' : tab === 'queue' ? 'Live pipeline' : 'Gallery';
+  const tabTitle = tab === 'upload' ? 'New run' : tab === 'queue' ? 'Live pipeline' : tab === 'offers' ? 'Offer Vault' : 'Gallery';
   const tabSub = tab === 'upload'
     ? 'Compose a brief, choose your bot lineup, and ship it through the 3-phase Genesis pipeline.'
     : tab === 'queue'
       ? 'Watch the 3 phases of the Genesis pipeline as they run — analysis, fan-out, and rendering.'
-      : 'Browse every variant the pipeline produced. Copy, compare, and export as a Meta-ready batch.';
+      : tab === 'offers'
+        ? 'Save complete offer profiles with persona, hooks, and constraints. Select one before running.'
+        : 'Browse every variant the pipeline produced. Copy, compare, and export as a Meta-ready batch.';
 
   return (
     <>
@@ -1950,6 +2081,7 @@ function App() {
                 canSubmit={pipelineMode === 'recreate' ? referenceImages.trim().length > 0 : ad.trim().length > 0}
                 pipelineMode={pipelineMode} setPipelineMode={setPipelineMode}
                 referenceImages={referenceImages} setReferenceImages={setReferenceImages}
+                selectedOffer={selectedOffer} setTab={setTab}
               />
             )}
 
@@ -1958,6 +2090,7 @@ function App() {
             )}
 
             {tab === 'gallery' && <GalleryView downloadCSV={downloadCSV} realResults={galleryItems} />}
+            {tab === 'offers' && <OffersView offers={offers} saveOffers={saveOffers} selectedOfferId={selectedOfferId} setSelectedOfferId={setSelectedOfferId} />}
           </div>
         </main>
       </div>
