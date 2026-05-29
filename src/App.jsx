@@ -1024,7 +1024,7 @@ function BotPicker({ category, setCategory, selected, toggle, selectAll }) {
   );
 }
 
-function ConfigRail({ numVariants, setNumVariants, ratios, toggleRatio, category, setCategory, est, onSubmit, submitting, canSubmit = false }) {
+function ConfigRail({ numVariants, setNumVariants, ratios, toggleRatio, category, setCategory, est, onSubmit, submitting, canSubmit = false, pipelineMode = 'generate' }) {
   const p = (numVariants - 1) / 19 * 100;
   return (
     <div className="rail">
@@ -1090,9 +1090,9 @@ function ConfigRail({ numVariants, setNumVariants, ratios, toggleRatio, category
         {submitting
           ? <>Processing…</>
           : !canSubmit
-            ? <>⚠ Paste winning ad copy first</>
+            ? <>{pipelineMode === 'recreate' ? '⚠ Paste image URLs first' : '⚠ Paste winning ad copy first'}</>
             : <>
-              <I.bolt size={15} /> Generate {est.images} ad unit{est.images === 1 ? '' : 's'}
+              <I.bolt size={15} /> {pipelineMode === 'recreate' ? '🔄 Recreate Images' : `Generate ${est.images} ad unit${est.images === 1 ? '' : 's'}`}
               <span className="kbd">⌘ ↵</span>
             </>}
       </button>
@@ -1101,19 +1101,66 @@ function ConfigRail({ numVariants, setNumVariants, ratios, toggleRatio, category
 }
 
 function UploadView(props) {
+  const { pipelineMode = 'generate', setPipelineMode, referenceImages = '', setReferenceImages } = props;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Mode Toggle */}
+      <div style={{ display: 'flex', gap: 8, padding: '2px', background: 'var(--panel)', borderRadius: 10, border: '1px solid var(--line)', width: 'fit-content' }}>
+        <button onClick={() => setPipelineMode?.('generate')} style={{
+          padding: '8px 20px', borderRadius: 8, border: 'none', cursor: 'pointer',
+          fontSize: 13, fontWeight: 600, fontFamily: 'var(--sans)',
+          background: pipelineMode === 'generate' ? 'var(--blue)' : 'transparent',
+          color: pipelineMode === 'generate' ? '#fff' : 'var(--t-low)',
+          transition: 'all 0.2s'
+        }}>⚡ Generate Variants</button>
+        <button onClick={() => setPipelineMode?.('recreate')} style={{
+          padding: '8px 20px', borderRadius: 8, border: 'none', cursor: 'pointer',
+          fontSize: 13, fontWeight: 600, fontFamily: 'var(--sans)',
+          background: pipelineMode === 'recreate' ? 'var(--green, #38a169)' : 'transparent',
+          color: pipelineMode === 'recreate' ? '#fff' : 'var(--t-low)',
+          transition: 'all 0.2s'
+        }}>🔄 Recreate Images</button>
+      </div>
+
       <PipelineStrip numVariants={props.numVariants} ratios={props.ratios} />
       <div className="upload-grid">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 }}>
           <BriefIntake {...props} />
-          <BotPicker
-            category={props.category}
-            setCategory={props.setCategory}
-            selected={props.selectedBots}
-            toggle={props.toggleBot}
-            selectAll={props.selectAllBots}
-          />
+
+          {pipelineMode === 'recreate' ? (
+            /* Image URL Input for Recreate Mode */
+            <div className="card fade-in" style={{ padding: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                <span style={{ fontSize: 16 }}>🖼️</span>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--t-hi)' }}>Reference Images</div>
+                  <div style={{ fontSize: 11, color: 'var(--t-dim)', fontFamily: 'var(--mono)' }}>paste winning ad image URLs · one per line</div>
+                </div>
+              </div>
+              <textarea
+                value={referenceImages}
+                onChange={(e) => setReferenceImages?.(e.target.value)}
+                placeholder={"https://example.com/winning-ad-1.jpg\nhttps://example.com/winning-ad-2.jpg"}
+                rows={4}
+                style={{
+                  width: '100%', padding: 14, background: 'var(--bg)', border: '1px solid var(--line)',
+                  borderRadius: 10, color: 'var(--t-hi)', fontSize: 13, fontFamily: 'var(--mono)',
+                  resize: 'vertical', lineHeight: 1.8
+                }}
+              />
+              <div style={{ marginTop: 10, fontSize: 11, color: 'var(--t-dim)', lineHeight: 1.6 }}>
+                The system will analyze each image with AI to understand what makes it a winner, then recreate a new version keeping the same winning elements.
+              </div>
+            </div>
+          ) : (
+            <BotPicker
+              category={props.category}
+              setCategory={props.setCategory}
+              selected={props.selectedBots}
+              toggle={props.toggleBot}
+              selectAll={props.selectAllBots}
+            />
+          )}
         </div>
         <ConfigRail {...props} />
       </div>
@@ -1567,6 +1614,7 @@ const SURFACES = {
 // MAIN APP
 function App() {
   const WEBHOOK_URL = 'https://ad-recreator-production.up.railway.app/webhook/ad-recreator-full';
+  const RECREATE_URL = 'https://ad-recreator-production.up.railway.app/webhook/ad-recreator-recreate';
 
   const [tab, setTab] = useState('upload');
   const [status, setStatus] = useState('idle');
@@ -1579,6 +1627,8 @@ function App() {
   const [ratios, setRatios] = useState(['9:16']);
   const [category, setCategory] = useState('ai_image');
   const [selectedBots, setSelectedBots] = useState(AI_BOTS.map(b => b.id));
+  const [pipelineMode, setPipelineMode] = useState('generate'); // 'generate' or 'recreate'
+  const [referenceImages, setReferenceImages] = useState('');
 
   // Real pipeline state
   const [logs, setLogs] = useState([]);
@@ -1623,7 +1673,9 @@ function App() {
   };
 
   const onSubmit = async () => {
-    if (!ad.trim()) return;
+    if (pipelineMode === 'generate' && !ad.trim()) return;
+    if (pipelineMode === 'recreate' && !referenceImages.trim()) return;
+
     setStatus('active');
     setTab('queue');
     setLogs([]);
@@ -1631,48 +1683,42 @@ function App() {
     setRunStats({ elapsed: 0, tokens: 0, cost: 0 });
 
     const startTime = Date.now();
-    const estTotal = (numVariants * 55) + 120; // estimated total seconds
+    const imageUrls = referenceImages.split('\n').map(u => u.trim()).filter(u => u.startsWith('http'));
+    const estTotal = pipelineMode === 'recreate'
+      ? (imageUrls.length * 75) + 240
+      : (numVariants * 75) + 180;
 
-    // Start elapsed timer + progress simulation
     timerRef.current = setInterval(() => {
       const elapsed = Math.floor((Date.now() - startTime) / 1000);
       setRunStats(prev => ({ ...prev, elapsed }));
-
-      // Simulate phase progress based on elapsed time
-      const p1End = 30; // Phase 1 takes ~30s
-      const p2End = p1End + (numVariants * 55); // Phase 2
-      const p3End = estTotal; // Phase 3
-
+      const p1End = 30;
+      const p2End = p1End + (pipelineMode === 'recreate' ? imageUrls.length * 75 : numVariants * 75);
+      const p3End = estTotal;
       if (elapsed < p1End) {
-        const p1Pct = Math.min(95, Math.floor((elapsed / p1End) * 100));
-        setRunState({ p1: 'run', p2: 'wait', p3: 'wait', progress: { p1: p1Pct, p2: 0, p3: 0 } });
+        setRunState({ p1: 'run', p2: 'wait', p3: 'wait', progress: { p1: Math.min(95, Math.floor((elapsed / p1End) * 100)), p2: 0, p3: 0 } });
       } else if (elapsed < p2End) {
-        const p2Pct = Math.min(95, Math.floor(((elapsed - p1End) / (p2End - p1End)) * 100));
-        setRunState({ p1: 'done', p2: 'run', p3: 'wait', progress: { p1: 100, p2: p2Pct, p3: 0 } });
+        setRunState({ p1: 'done', p2: 'run', p3: 'wait', progress: { p1: 100, p2: Math.min(95, Math.floor(((elapsed - p1End) / (p2End - p1End)) * 100)), p3: 0 } });
       } else if (elapsed < p3End) {
-        const p3Pct = Math.min(95, Math.floor(((elapsed - p2End) / (p3End - p2End)) * 100));
-        setRunState({ p1: 'done', p2: 'done', p3: 'run', progress: { p1: 100, p2: 100, p3: p3Pct } });
+        setRunState({ p1: 'done', p2: 'done', p3: 'run', progress: { p1: 100, p2: 100, p3: Math.min(95, Math.floor(((elapsed - p2End) / (p3End - p2End)) * 100)) } });
       } else {
-        // Past ETA — show near-complete
         setRunState({ p1: 'done', p2: 'done', p3: 'run', progress: { p1: 100, p2: 100, p3: 98 } });
       }
     }, 1000);
 
-    addLog('p1', 'info', `Pipeline started · ${numVariants} variants · ${ratios.join(', ')}`);
+    const modeLabel = pipelineMode === 'recreate' ? 'Image Recreate' : 'Generate Variants';
+    addLog('p1', 'info', `${modeLabel} · ${pipelineMode === 'recreate' ? imageUrls.length + ' images' : numVariants + ' variants'}`);
     addLog('p1', 'info', `Estimated time: ~${Math.ceil(estTotal / 60)} min`);
 
     try {
-      // POST to webhook — now responds instantly
-      const res = await fetch(WEBHOOK_URL, {
+      const url = pipelineMode === 'recreate' ? RECREATE_URL : WEBHOOK_URL;
+      const body = pipelineMode === 'recreate'
+        ? { ad_content: ad, offer: offer, reference_images: imageUrls, aspect_ratios: ratios }
+        : { ad_content: ad, offer: offer, num_variants: numVariants, aspect_ratios: ratios, bot_filter: category };
+
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ad_content: ad,
-          offer: offer,
-          num_variants: numVariants,
-          aspect_ratios: ratios,
-          bot_filter: category
-        })
+        body: JSON.stringify(body)
       });
 
       const data = await res.json();
@@ -1901,7 +1947,9 @@ function App() {
                 est={est}
                 onSubmit={onSubmit}
                 submitting={status === 'active'}
-                canSubmit={ad.trim().length > 0}
+                canSubmit={pipelineMode === 'recreate' ? referenceImages.trim().length > 0 : ad.trim().length > 0}
+                pipelineMode={pipelineMode} setPipelineMode={setPipelineMode}
+                referenceImages={referenceImages} setReferenceImages={setReferenceImages}
               />
             )}
 
